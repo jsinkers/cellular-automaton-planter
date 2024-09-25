@@ -49,36 +49,46 @@ def export_to_openscad(ca_output, filename="ca_planter.scad"):
 
         # Write the OpenSCAD code that reads from the CA data
         f.write("""
-module cylindrical_planter() {
+module planter() {
     height = len(ca_grid);  // The height of the cylinder based on the CA grid
-    radius = 40;            // Adjust as needed for your design
-    thickness = 2;          // Wall thickness
+    inner_radius=60;
+    outer_radius=inner_radius + 3;            // Adjust as needed for your design
+    thickness = 2.5;          // feature thickness
+    base_thickness=5;
     num_slices = len(ca_grid[0]);  // Number of slices (circumferential segments)
-
+    chamfer_radius = 2;
+    
+    // Central hole for the plant
+    
+    difference() {
+        translate([0,0,-base_thickness])
+        cylinder(r=outer_radius, h=height+base_thickness, center=false);
+        cylinder(r=inner_radius, h=height + 0.2, center=false);
+     // Add the chamfer at the base
+        //translate([0, 0, -base_thickness])  // Position the chamfer at the bottom
+            //cylinder(r1=outer_radius - chamfer_radius, r2=outer_radius, h=chamfer_radius, center=false);  // Create the chamfer
+        
+        }
+    
     for (h = [0 : height-1]) {
         for (s = [0 : num_slices-1]) {
             angle = s * 360 / num_slices;
             z_pos = h;
             if (ca_grid[h][s] == 1) {
                 // Extrude outward for each active cell
-                translate([radius * cos(angle), radius * sin(angle), z_pos])
+                translate([outer_radius * cos(angle), outer_radius * sin(angle), z_pos])
                     cylinder(r=thickness, h=1, center=false);
             }
         }
     }
 }
 
-cylindrical_planter();
+planter();
         """)
 
 # Example settings
-width = 40  # Number of cells around the cylinder's circumference
-height = 60  # Number of time steps (vertical height of the planter)
-rule_num = 110  # Rule number (Rule 110)
-
-# Example settings
 width = 400  # Number of cells around the cylinder's circumference
-height = 60  # Number of time steps (vertical height of the planter)
+height = 100  # Number of time steps (vertical height of the planter)
 rule_num = 30  # The rule number to apply (e.g., Rule 110)
 
 ca_output = generate_ca(width, height, rule_num)

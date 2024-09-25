@@ -64,13 +64,16 @@ ca_grid = [
 
 module cylindrical_planter() {
     height = len(ca_grid);  // The height of the cylinder based on the CA grid
+    // line width for 3d printing
+    //line_width = 0.4;
     inner_radius=60;
-    outer_radius=inner_radius + 2.5;            // Adjust as needed for your design
-    thickness = 2.5;          // feature thickness
+    outer_radius=inner_radius + 0.8;            // Adjust as needed for your design
+    thickness = 2.4;          // feature thickness
     base_thickness=2.5;
     num_slices = len(ca_grid[0]);  // Number of slices (circumferential segments)
     chamfer_radius = 2;
-    
+    cell_size = 1;
+    wall_thickness=2.4;
     
     // Central hole for the plant
     translate([0,0,-base_thickness])
@@ -83,8 +86,8 @@ module cylindrical_planter() {
      // Add the chamfer at the base
         //translate([0, 0, -base_thickness])  // Position the chamfer at the bottom
            
+    }
         
-        }
     //cylinder(r1=outer_radius - chamfer_radius, r2=outer_radius, h=chamfer_radius, center=false);  // Create the chamfer
     
     
@@ -96,10 +99,14 @@ module cylindrical_planter() {
                 // Extrude outward for each active cell
                 translate([outer_radius * cos(angle), outer_radius * sin(angle), z_pos])
                     // TODO: change to linear extrusion?
-                    cylinder(r=thickness, h=1, center=false);
+                    //cylinder(r=thickness, h=1, center=false);
+                    rotate([0, 0, angle])
+                        translate([-cell_size / 2, 0, 0])
+                        cube([wall_thickness, cell_size, 1], center=false);
             }
         }
     }
+
 }
 
 cylindrical_planter();
