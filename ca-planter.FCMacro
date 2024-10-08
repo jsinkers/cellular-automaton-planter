@@ -1,4 +1,5 @@
 import FreeCAD as App
+import FreeCADGui
 import Part
 import math
 import random
@@ -7,20 +8,26 @@ import PySide
 # Parameters
 rng_seed = 0 # Seed for random number generator. allows repeatable output. Change to vary the result
 cells = 40  # Circumferential resolution (number of cells per row)
-height = 50 # Height of planter
-outer_radius = 60  # Outer radius of the planter
+height = 50 # Height of planter 
+outer_diameter = 120  # Outer radius of the planter
 wall_thickness = 1.2  # Thickness of the walls - ideally a multiple of the line width of your printer
 cell_thickness = 2.4  # Protrusion of the cells from the planter surface
 rule_number = 30  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably the most interesting
 overlap_thickness = 0.3  # Thickness of the overlap between the cells and the outer cylinder
+base_depth = 5  # Depth of the base of the planter
+base_thickness = 3  # Thickness of the base
+base_fillet = 3  # Fillet radius of the base
+drain_hole_diameter = 30  # Diameter of the drain hole
 
 # Computed parameters
+outer_radius = outer_diameter / 2  # Outer radius of the planter
 circumference = 2 * math.pi * (outer_radius + cell_thickness)
 
 # Calculate number of steps so that cells are close to square
 cell_size = circumference / cells  # Size of each CA cell (square cells, so this is width and height)
 
-steps = int(height / cell_size)  # Adjust number of steps (height) based on cell size
+height_wo_base = height - base_depth  # Adjust height to exclude the base
+steps = int(height_wo_base / cell_size)  # Adjust number of steps (height) based on cell size
 
 print(f"Cell size: {cell_size}")
 print(f"Number of generations: {steps}")
@@ -50,10 +57,27 @@ doc = App.newDocument("CA_Planter_General")
 origin = App.ActiveDocument.addObject("App::Origin", "Origin")
 origin.ViewObject.Visibility = True
 
-# Create basic cylinder of planter
-outer_cylinder = Part.makeCylinder(outer_radius + overlap_thickness, steps * cell_size)
-inner_cylinder = Part.makeCylinder(outer_radius - wall_thickness, steps * cell_size)
+# Create basic cylinder of planter, including base
+
+modified_base_depth = height - steps * cell_size # Adjust base depth to give correct height
+print(f"Modified base depth: {modified_base_depth}")
+outer_cylinder = Part.makeCylinder(outer_radius + overlap_thickness, height)
+outer_cylinder.translate(App.Vector(0, 0, -modified_base_depth))
+# Select the lowest edge by checking Z coordinates
+edges = outer_cylinder.Edges
+lowest_edge = min(edges, key=lambda e: e.Vertexes[0].Point.z)  # Edge with lowest Z value
+outer_cylinder = outer_cylinder.makeFillet(base_fillet, [lowest_edge])
+#planter = outer_cylinder.fuse(base)
+
+inner_cylinder = Part.makeCylinder(outer_radius - wall_thickness, height - base_thickness)
+inner_cylinder.translate(App.Vector(0, 0, -modified_base_depth + base_thickness))
 planter = outer_cylinder.cut(inner_cylinder)
+
+oversize = 0.1  # Oversize for the drain hole to ensure cut succeeds
+drain_hole = Part.makeCylinder(drain_hole_diameter / 2, base_thickness)
+drain_hole.translate(App.Vector(0, 0, -modified_base_depth))
+
+planter = planter.cut(drain_hole)
 
 # Generate CA and extrude shapes for each active cell
 state = initial_state
@@ -112,3 +136,9 @@ print("finished")
 Part.show(planter)
 
 doc.recompute()
+
+# Set view to isometric
+FreeCADGui.activeDocument().activeView().viewIsometric()
+
+# Fit the view to the whole object
+FreeCADGui.activeDocument().activeView().fitAll()
