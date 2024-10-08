@@ -1,0 +1,110 @@
+import FreeCAD as App
+import Part
+import math
+import random
+import PySide
+
+# Parameters
+rng_seed = 0
+cells = 400  # Circumferential resolution (number of cells per row)
+height = 50 # height of planter
+outer_radius = 60  # Outer radius of the planter
+wall_thickness = 2  # Thickness of the walls
+rule_number = 30  # Cellular Automaton rule (adjust this for different rules)
+
+# Computed parameters
+circumference = 2 * math.pi * outer_radius
+
+# Calculate number of steps so that cells are close to square
+cell_size = circumference / cells  # Size of each CA cell (square cells, so this is width and height)
+
+steps = int(height / cell_size)  # Adjust number of steps (height) based on cell size
+
+print(cell_size)
+print(steps)
+
+
+# Generate the rule's binary representation
+rule_bin = "{0:08b}".format(rule_number)  # Convert rule number to binary (8 bits)
+
+# Function to apply any rule (generic based on rule number)
+def apply_rule(a, b, c):
+    # Convert the triplet (a, b, c) to a binary index
+    index = (a << 2) | (b << 1) | c
+    #print(index)
+    # Return the corresponding bit in the rule's binary string
+    return int(rule_bin[7 - index])
+
+# Generate initial state (random, alternating, or custom)
+random.seed(rng_seed)
+#initial_state = [i % 2 for i in range(cells)]
+initial_state = [random.randint(0, 1) for i in range(cells)]
+
+# Create document
+doc = App.newDocument("CA_Planter_General")
+
+# Base face of the planter (this will later be subtracted to create the inner hole)
+#outer_cylinder = Part.makeCylinder(outer_radius, steps * cell_size)
+#inner_cylinder = Part.makeCylinder(outer_radius - wall_thickness, steps * cell_size)
+
+# Combine to create the hollow shape
+#planter = outer_cylinder.cut(inner_cylinder)
+origin = App.ActiveDocument.addObject("App::Origin", "Origin")
+origin.ViewObject.Visibility = True
+
+# Generate CA and extrude shapes for each active cell
+state = initial_state
+pd = PySide.QtGui.QProgressDialog(u"Generating", u"Abort", 0, steps)
+pd.setModal(True)
+
+for z in range(steps):
+    
+    #print(f"Step {z}")
+    print("".join([str(s) for s in state]))
+    next_state = []
+    for s in range(cells):
+        # Get the three neighboring cells
+        left = state[(s - 1) % cells]
+        center = state[s]
+        right = state[(s + 1) % cells]
+        
+        # Apply the rule to determine the next state
+        next_state.append(apply_rule(left, center, right))
+        
+        # If current cell is active, add a cube at the appropriate position
+        if state[s] == 1:
+            angle = s * 2 * math.pi / cells
+            x_pos = outer_radius * math.cos(angle)
+            y_pos = outer_radius * math.sin(angle)
+            z_pos = z * cell_size  # Adjust z-position based on cell size
+            # location to make cell
+            cell_origin = App.Vector(x_pos, y_pos, z_pos)
+            cell_direction = App.Vector(x_pos, y_pos, 0)
+            # Create cube and position it (length, width, height, point, direction
+            #cube = Part.makeBox(cell_size, cell_size, wall_thickness, cell_origin, cell_direction)
+            cube = Part.makeBox(wall_thickness, cell_size, cell_size)
+            cube.translate(App.Vector(-cell_size/2, -cell_size/2, 0))
+            
+            # rotate: rotation center, axis, rotation angle
+            cube.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), math.degrees(angle))
+            cube.translate(cell_origin)
+            Part.show(cube)
+            # Add the cube to the planter
+            #planter = planter.fuse(cube)
+    
+    # Update state for the next generation
+    state = next_state
+    pd.setValue(z)
+    if pd.wasCanceled():
+        raise Exception("Canceled by user")
+
+pd.setValue(steps)
+print("finished")
+
+# Add chamfer to the base if needed
+#planter = planter.makeChamfer(3, [planter.Edges[-1]])
+
+# Display the result in FreeCAD
+#Part.show(planter)
+
+doc.recompute()
