@@ -5,23 +5,25 @@ import random
 import PySide
 
 # Parameters
-rng_seed = 0
-cells = 400  # Circumferential resolution (number of cells per row)
-height = 50 # height of planter
+rng_seed = 0 # Seed for random number generator. allows repeatable output. Change to vary the result
+cells = 40  # Circumferential resolution (number of cells per row)
+height = 50 # Height of planter
 outer_radius = 60  # Outer radius of the planter
-wall_thickness = 2  # Thickness of the walls
-rule_number = 30  # Cellular Automaton rule (adjust this for different rules)
+wall_thickness = 1.2  # Thickness of the walls - ideally a multiple of the line width of your printer
+cell_thickness = 2.4  # Protrusion of the cells from the planter surface
+rule_number = 30  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably the most interesting
+overlap_thickness = 0.3  # Thickness of the overlap between the cells and the outer cylinder
 
 # Computed parameters
-circumference = 2 * math.pi * outer_radius
+circumference = 2 * math.pi * (outer_radius + cell_thickness)
 
 # Calculate number of steps so that cells are close to square
 cell_size = circumference / cells  # Size of each CA cell (square cells, so this is width and height)
 
 steps = int(height / cell_size)  # Adjust number of steps (height) based on cell size
 
-print(cell_size)
-print(steps)
+print(f"Cell size: {cell_size}")
+print(f"Number of generations: {steps}")
 
 
 # Generate the rule's binary representation
@@ -31,29 +33,32 @@ rule_bin = "{0:08b}".format(rule_number)  # Convert rule number to binary (8 bit
 def apply_rule(a, b, c):
     # Convert the triplet (a, b, c) to a binary index
     index = (a << 2) | (b << 1) | c
-    #print(index)
     # Return the corresponding bit in the rule's binary string
     return int(rule_bin[7 - index])
 
 # Generate initial state (random, alternating, or custom)
 random.seed(rng_seed)
+# alternating initial state
 #initial_state = [i % 2 for i in range(cells)]
+# random initial state
 initial_state = [random.randint(0, 1) for i in range(cells)]
 
 # Create document
 doc = App.newDocument("CA_Planter_General")
 
-# Base face of the planter (this will later be subtracted to create the inner hole)
-#outer_cylinder = Part.makeCylinder(outer_radius, steps * cell_size)
-#inner_cylinder = Part.makeCylinder(outer_radius - wall_thickness, steps * cell_size)
-
-# Combine to create the hollow shape
-#planter = outer_cylinder.cut(inner_cylinder)
+# show the origin
 origin = App.ActiveDocument.addObject("App::Origin", "Origin")
 origin.ViewObject.Visibility = True
 
+# Create basic cylinder of planter
+outer_cylinder = Part.makeCylinder(outer_radius + overlap_thickness, steps * cell_size)
+inner_cylinder = Part.makeCylinder(outer_radius - wall_thickness, steps * cell_size)
+planter = outer_cylinder.cut(inner_cylinder)
+
 # Generate CA and extrude shapes for each active cell
 state = initial_state
+
+# Add a progress dialog - this helps when generating large models
 pd = PySide.QtGui.QProgressDialog(u"Generating", u"Abort", 0, steps)
 pd.setModal(True)
 
@@ -74,19 +79,18 @@ for z in range(steps):
         # If current cell is active, add a cube at the appropriate position
         if state[s] == 1:
             angle = s * 2 * math.pi / cells
-            x_pos = outer_radius * math.cos(angle)
-            y_pos = outer_radius * math.sin(angle)
+            x_pos = (outer_radius + cell_size/2 - overlap_thickness) * math.cos(angle)
+            y_pos = (outer_radius + cell_size/2 - overlap_thickness) * math.sin(angle)
             z_pos = z * cell_size  # Adjust z-position based on cell size
             # location to make cell
             cell_origin = App.Vector(x_pos, y_pos, z_pos)
-            cell_direction = App.Vector(x_pos, y_pos, 0)
-            # Create cube and position it (length, width, height, point, direction
-            #cube = Part.makeBox(cell_size, cell_size, wall_thickness, cell_origin, cell_direction)
-            cube = Part.makeBox(wall_thickness, cell_size, cell_size)
+            # Create cube (length, width, height)
+            cube = Part.makeBox(cell_thickness + overlap_thickness, cell_size, cell_size)
+            # Centre the cube before moving it
             cube.translate(App.Vector(-cell_size/2, -cell_size/2, 0))
-            
-            # rotate: rotation center, axis, rotation angle
+            # Rotate the cube according to it's angle on the planter (rotation center, axis, rotation angle)
             cube.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), math.degrees(angle))
+            # Move the cell to the correct height and edge of planter
             cube.translate(cell_origin)
             Part.show(cube)
             # Add the cube to the planter
@@ -105,6 +109,6 @@ print("finished")
 #planter = planter.makeChamfer(3, [planter.Edges[-1]])
 
 # Display the result in FreeCAD
-#Part.show(planter)
+Part.show(planter)
 
 doc.recompute()
