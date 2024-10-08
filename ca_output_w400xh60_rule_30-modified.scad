@@ -61,19 +61,20 @@ ca_grid = [
   [1,0,1,0,0,0,1,1,0,1,1,0,1,1,0,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,0,1,0,1,0,1,0,0,1,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,1,1,0,1,1,1,1,0,1,1,1,1,0,1,0,1,0,1,1,0,0,1,0,1,0,0,0,1,1,1,0,0,1,0,0,1,1,0,1,1,1,0,0,0,1,0,0,1,0,1,1,0,0,0,0,1,0,1,1,0,1,0,1,1,1,1,0,1,0,0,1,1,0,1,1,0,0,1,1,0,1,1,0,0,1,1,1,0,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,0,1,1,1,0,1,0,0,0,1,0,1,1,1,1,0,1,0,0,0,0,0,0,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,0,1,0,1,0,1,0,0,0,1,0,1,1,0,1,0,0,0,1,1,1,0,0,1,0,1,0,1,0,0,0,0,1,1,0,1,1,1,1,0,0,0,0,1,0,1,1,1,1,0,0,1,1,1,1,0,1,0,0,1,1,1,0,1,0,1,0,1,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,1,0,1,1,1,0,1,1,0,0,1,1,1,1,1,0,0,0,0,1,0,1,1,1,1,0,0,1,0,0,0,0,0,0,0,0,1,1,1,0,0,1,1,1,1,0,0,1,0,1,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,0,1,1,1,0,1,1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,0,1,1,0,1,0,0,1,0,0,1],
 ];
 
+$fn = 128;
 
 module cylindrical_planter() {
     height = len(ca_grid);  // The height of the cylinder based on the CA grid
     // line width for 3d printing
     //line_width = 0.4;
     inner_radius=60;
-    outer_radius=inner_radius + 0.8;            // Adjust as needed for your design
+    outer_radius=inner_radius + 1.2;            // Adjust as needed for your design
     thickness = 2.4;          // feature thickness
-    base_thickness=2.5;
+        base_thickness=2;
     num_slices = len(ca_grid[0]);  // Number of slices (circumferential segments)
     chamfer_radius = 2;
     cell_size = 1;
-    wall_thickness=2.4;
+    wall_thickness= thickness;
     
     // Central hole for the plant
     translate([0,0,-base_thickness])
@@ -82,12 +83,13 @@ module cylindrical_planter() {
     difference() {
         translate([0,0,-base_thickness])
         cylinder(r=outer_radius, h=height+base_thickness, center=false);
-        cylinder(r=inner_radius, h=height + 0.2, center=false);
+        translate([0,0,-0.2])
+        cylinder(r=inner_radius, h=height + 0.4, center=false);
      // Add the chamfer at the base
         //translate([0, 0, -base_thickness])  // Position the chamfer at the bottom
            
     }
-        
+       
     //cylinder(r1=outer_radius - chamfer_radius, r2=outer_radius, h=chamfer_radius, center=false);  // Create the chamfer
     
     
@@ -101,7 +103,7 @@ module cylindrical_planter() {
                     // TODO: change to linear extrusion?
                     //cylinder(r=thickness, h=1, center=false);
                     rotate([0, 0, angle])
-                        translate([-cell_size / 2, 0, 0])
+                        translate([-0.1, 0, 0])
                         cube([wall_thickness, cell_size, 1], center=false);
             }
         }
