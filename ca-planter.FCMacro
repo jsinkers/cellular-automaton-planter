@@ -4,11 +4,16 @@ import Part
 import math
 import random
 import PySide
+from datetime import datetime
+
+# Get the current date and time
+now = datetime.now()
+timestamp = now.strftime("%Y%m%d_%H%M%S")  # Format: YYYYMMDD_HHMMSS
 
 # Parameters
 rng_seed = 0 # Seed for random number generator. allows repeatable output. Change to vary the result
-cells = 250  # Circumferential resolution (number of cells per row)
-height = 50 # Height of planter 
+cells = 330  # Circumferential resolution (number of cells per row)
+height = 100 # Height of planter 
 outer_diameter = 120  # Outer radius of the planter
 wall_thickness = 1.2  # Thickness of the walls - ideally a multiple of the line width of your printer
 cell_thickness = 2.4  # Protrusion of the cells from the planter surface
@@ -19,7 +24,7 @@ base_thickness = 3  # Thickness of the base
 base_fillet = 3  # Fillet radius of the base
 drain_hole_diameter = 30  # Diameter of the drain hole
 combine = False  # Combine all cells into a single shape (True) or keep them separate (False). Combining is much slower to generate, but the output has multiple parts
-step_file_path = "A:\\Personal\\code-workspace\\cellular-automaton-planter\\ca-planter.step" # Specify the file path where you want to save the STEP file
+step_file_path = f"A:\\Personal\\code-workspace\\cellular-automaton-planter\\ca-planter-{timestamp}-D{outer_diameter}H{height}-C{cells}-R{rule_number}-S{rng_seed}.step" # Specify the file path where you want to save the STEP file
 
 # Computed parameters
 outer_radius = outer_diameter / 2  # Outer radius of the planter
@@ -156,4 +161,5 @@ for obj in parts_to_export:
 
 # Export the selected objects to a STEP file
 Part.export(FreeCADGui.Selection.getSelection(), step_file_path)
+
 print(f"Exported to {step_file_path}")
