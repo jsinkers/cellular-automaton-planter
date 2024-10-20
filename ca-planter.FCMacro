@@ -17,7 +17,7 @@ height = 100 # Height of planter
 outer_diameter = 120  # Outer radius of the planter
 wall_thickness = 1.2  # Thickness of the walls - ideally a multiple of the line width of your printer
 cell_thickness = 2.4  # Protrusion of the cells from the planter surface
-rule_number = 30  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably the most interesting
+rule_number = 110  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably the most interesting
 overlap_thickness = 0.3  # Thickness of the overlap between the cells and the outer cylinder
 base_depth = 5  # Depth of the base of the planter
 base_thickness = 3  # Thickness of the base
@@ -97,6 +97,7 @@ for z in range(steps):
     
     #print(f"Step {z}")
     print("".join([str(s) for s in state]))
+    cubes = []
     next_state = []
     for s in range(cells):
         # Get the three neighboring cells
@@ -123,12 +124,14 @@ for z in range(steps):
             cube.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), math.degrees(angle))
             # Move the cell to the correct height and edge of planter
             cube.translate(cell_origin)
-            if combine:
-                # Add the cube to the planter
-                planter = planter.fuse(cube)
-            else:
-                # Add the cube to the document
-                Part.show(cube)
+            cubes.append(cube)
+    if combine:
+        # Add the cube to the planter
+        planter = planter.fuse(cubes)
+    else:
+        # Add the cube to the document
+        for cube in cubes:
+            Part.show(cube)
     
     # Update state for the next generation
     state = next_state
