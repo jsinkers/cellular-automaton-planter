@@ -51,10 +51,10 @@ def apply_rule(a, b, c):
     return int(rule_bin[7 - index])
 
 # Generate initial state (random, alternating, or custom)
-random.seed(rng_seed)
 # alternating initial state
 #initial_state = [i % 2 for i in range(cells)]
 # random initial state
+random.seed(rng_seed)
 initial_state = [random.randint(0, 1) for i in range(cells)]
 
 # Create document
@@ -65,7 +65,6 @@ origin = App.ActiveDocument.addObject("App::Origin", "Origin")
 origin.ViewObject.Visibility = True
 
 # Create basic cylinder of planter, including base
-
 modified_base_depth = height - steps * cell_size # Adjust base depth to give correct height
 print(f"Modified base depth: {modified_base_depth}")
 outer_cylinder = Part.makeCylinder(outer_radius + overlap_thickness, height)
@@ -80,7 +79,6 @@ inner_cylinder = Part.makeCylinder(outer_radius - wall_thickness, height - base_
 inner_cylinder.translate(App.Vector(0, 0, -modified_base_depth + base_thickness))
 planter = outer_cylinder.cut(inner_cylinder)
 
-oversize = 0.1  # Oversize for the drain hole to ensure cut succeeds
 drain_hole = Part.makeCylinder(drain_hole_diameter / 2, base_thickness)
 drain_hole.translate(App.Vector(0, 0, -modified_base_depth))
 
@@ -93,12 +91,32 @@ state = initial_state
 pd = PySide.QtGui.QProgressDialog(u"Generating", u"Abort", 0, steps)
 pd.setModal(True)
 
+# loop through generations
 for z in range(steps):
     
     #print(f"Step {z}")
     print("".join([str(s) for s in state]))
-    cubes = []
+    sketches = []
     next_state = []
+
+    # 2. Create a new sketch and attach it to the XY plane
+    # Note that a separate sketch is created for each generation to ensure that open cells do not form connected boundaries across generations
+    # This is important for the Part Extrude operation to work correctly
+    sketch = doc.addObject('Sketcher::SketchObject', f'Planter_Sketch_{z}')
+    sketches.append(sketch)
+    sketch.Support = [(doc.getObject('XY_Plane'), '')]
+
+    # 3. Generate a bounding box in construction geometry
+    bounding_width = outer_diameter * math.pi
+    bounding_height = height
+
+    # Add the bounding box as construction lines (vertical and horizontal) - used for sketch on surface
+    sketch.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(bounding_width, 0, 0)), True)  # Bottom
+    sketch.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(0, bounding_height, 0)), True)  # Left
+    sketch.addGeometry(Part.LineSegment(App.Vector(0, bounding_height, 0), App.Vector(bounding_width, bounding_height, 0)), True)  # Top
+    sketch.addGeometry(Part.LineSegment(App.Vector(bounding_width, 0, 0), App.Vector(bounding_width, bounding_height, 0)), True)  # Right
+
+    # loop through cells in a generation
     for s in range(cells):
         # Get the three neighboring cells
         left = state[(s - 1) % cells]
@@ -109,29 +127,16 @@ for z in range(steps):
         next_state.append(apply_rule(left, center, right))
         
         # If current cell is active, add a cube at the appropriate position
+
         if state[s] == 1:
-            angle = s * 2 * math.pi / cells
-            x_pos = (outer_radius + cell_size/2 - overlap_thickness) * math.cos(angle)
-            y_pos = (outer_radius + cell_size/2 - overlap_thickness) * math.sin(angle)
-            z_pos = z * cell_size  # Adjust z-position based on cell size
             # location to make cell
-            cell_origin = App.Vector(x_pos, y_pos, z_pos)
-            # Create cube (length, width, height)
-            cube = Part.makeBox(cell_thickness + overlap_thickness, cell_size, cell_size)
-            # Centre the cube before moving it
-            cube.translate(App.Vector(-cell_size/2, -cell_size/2, 0))
-            # Rotate the cube according to it's angle on the planter (rotation center, axis, rotation angle)
-            cube.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), math.degrees(angle))
-            # Move the cell to the correct height and edge of planter
-            cube.translate(cell_origin)
-            cubes.append(cube)
-    if combine:
-        # Add the cube to the planter
-        planter = planter.fuse(cubes)
-    else:
-        # Add the cube to the document
-        for cube in cubes:
-            Part.show(cube)
+            x_pos = s * cell_size
+            y_pos = z * cell_size
+            # Add cell to the sketch
+            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos, 0), App.Vector(x_pos + cell_size, y_pos, 0)))  # Bottom
+            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos, 0), App.Vector(x_pos, y_pos + cell_size, 0)))  # Left
+            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos + cell_size, y_pos, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Right
+            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos + cell_size, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Top
     
     # Update state for the next generation
     state = next_state
