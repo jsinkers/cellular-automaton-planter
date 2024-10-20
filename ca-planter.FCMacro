@@ -7,8 +7,6 @@ import PySide
 from datetime import datetime
 
 # TODO: possible optimisations: 
-# - reduce number of extrusions: combine cells into a single shape within the sketch
-#   - line segments can be joined, or only a single line segment for adjacent cells
 # TODO: possible off-by-one error in the number of generations - check the height calculation
 # TODO: check offset between extruded cells and surface - may need to add an offset to the sketch on surface
 
@@ -184,8 +182,6 @@ for z in range(steps):
             x_pos = s * cell_size
             y_pos = z * cell_size
             # Add cell to the sketch
-            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos, 0), App.Vector(x_pos + cell_size, y_pos, 0)))  # Bottom
-            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos + cell_size, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Top
             # optimisation: reduce number of extrusions by combining cells into a single shape within the sketch
             # - examine the state of the previous cell - if it is also active, then don't include the boundary between cells 
             if left == 0 or s == 0:
@@ -194,6 +190,16 @@ for z in range(steps):
             # - examine the state of the next cell - if it is also active, then don't include the boundary between cells 
             if right == 0 or s == cells - 1:
                 sketch.addGeometry(Part.LineSegment(App.Vector(x_pos + cell_size, y_pos, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Right
+            
+            # - reduce number of extrusions: combine cells into a single shape within the sketch
+            #   - only draw the top and bottom lines if the cell is the last adjacent cell before an inactive cell, or if it is on the boundary
+            if left == 0 or s == 0:
+                min_x = x_pos
+            
+            if right == 0 or s == cells - 1:
+                sketch.addGeometry(Part.LineSegment(App.Vector(min_x, y_pos, 0), App.Vector((s+1) * cell_size, y_pos, 0)))  # Bottom
+                sketch.addGeometry(Part.LineSegment(App.Vector(min_x, y_pos + cell_size, 0), App.Vector((s+1) * cell_size, y_pos + cell_size, 0)))  # Top
+
     
     # Now perform sketch to surface
     # Make the support the face of the cylinder
@@ -208,6 +214,8 @@ for z in range(steps):
 
 pd.setValue(steps)
 gui_doc.activeView().fitAll()
+
+# raise Exception("Debug - sketches generated")
 
 # Wrapping =============================================
 print("Wrapping")
