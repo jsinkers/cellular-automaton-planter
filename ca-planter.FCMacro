@@ -8,8 +8,8 @@ from datetime import datetime
 
 # TODO: possible optimisations: 
 # - reduce number of sketches: use 2 sketches, with alternating generations
-# - reduce number of extrusions by combining cells into a single shape within the sketch
-#   - examine the state of the next cell - if it is also active, then don't include the boundary between cells 
+# TODO: possible off-by-one error in the number of generations - check the height calculation
+# TODO: check offset between extruded cells and surface - may need to add an offset to the sketch on surface
 
 # Get the current date and time
 now = datetime.now()
@@ -39,7 +39,7 @@ circumference = 2 * math.pi * outer_radius
 cell_size = circumference / cells  # Size of each CA cell (square cells, so this is width and height)
 
 height_wo_base = height - base_depth  # Adjust height to exclude the base
-steps = int(height_wo_base / cell_size)  # Adjust number of steps (height) based on cell size
+steps = 3 #int(height_wo_base / cell_size)  # Adjust number of steps (height) based on cell size
 
 print(f"Cell size: {cell_size}")
 print(f"Number of generations: {steps}")
@@ -141,15 +141,21 @@ for z in range(steps):
         next_state.append(apply_rule(left, center, right))
         
         # Create a cell if the current state is active
-        if state[s] == 1:
+        if center == 1:
             # location to make cell
             x_pos = s * cell_size
             y_pos = z * cell_size
             # Add cell to the sketch
             sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos, 0), App.Vector(x_pos + cell_size, y_pos, 0)))  # Bottom
-            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos, 0), App.Vector(x_pos, y_pos + cell_size, 0)))  # Left
-            sketch.addGeometry(Part.LineSegment(App.Vector(x_pos + cell_size, y_pos, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Right
             sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos + cell_size, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Top
+            # optimisation: reduce number of extrusions by combining cells into a single shape within the sketch
+            # - examine the state of the previous cell - if it is also active, then don't include the boundary between cells 
+            if left == 0 or s == 0:
+                sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos, 0), App.Vector(x_pos, y_pos + cell_size, 0)))  # Left
+            # optimisation: reduce number of extrusions by combining cells into a single shape within the sketch
+            # - examine the state of the next cell - if it is also active, then don't include the boundary between cells 
+            if right == 0 or s == cells - 1:
+                sketch.addGeometry(Part.LineSegment(App.Vector(x_pos + cell_size, y_pos, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Right
     
     # Now perform sketch to surface
     # Make the support the face of the cylinder
