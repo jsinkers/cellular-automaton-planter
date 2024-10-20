@@ -7,7 +7,8 @@ import PySide
 from datetime import datetime
 
 # TODO: possible optimisations: 
-# - reduce number of sketches: use 2 sketches, with alternating generations
+# - reduce number of extrusions: combine cells into a single shape within the sketch
+#   - line segments can be joined, or only a single line segment for adjacent cells
 # TODO: possible off-by-one error in the number of generations - check the height calculation
 # TODO: check offset between extruded cells and surface - may need to add an offset to the sketch on surface
 
@@ -98,25 +99,52 @@ planter_obj.Shape = planter
 # Fit the view to the whole object
 gui_doc.activeView().fitAll()
 
-# Generate CA and corresponding sketches ==============================================
+# Generate CA 
+print("Generating CA")
 state = initial_state
 
-# Add a progress dialog - this helps when generating large models
+# Add a progress dialog for long running operations
 pd = PySide.QtGui.QProgressDialog(u"Generating CA", u"Abort", 0, steps)
 pd.setModal(True)
 
-# 3. Generate a bounding box in construction geometry - this is required for the projection to surface
-bounding_width = outer_diameter * math.pi
-bounding_height = height_wo_base
-
-# loop through generations
-sketches = []
 for z in range(steps):
     print(f"Step {z} of {steps}")
     print("".join([str(s) for s in state]))
     next_state = []
 
-    # 2. Create a new sketch and attach it to the XY plane
+    # loop through cells in a generation
+    for s in range(cells):
+        # Get the three neighboring cells
+        left = state[(s - 1) % cells]
+        center = state[s]
+        right = state[(s + 1) % cells]
+        
+        # Apply the rule to determine the next state
+        next_state.append(apply_rule(left, center, right))
+    
+    # Update state for the next generation
+    state = next_state
+    pd.setValue(z)
+    if pd.wasCanceled():
+        raise Exception("Canceled by user")
+
+pd.setValue(steps)
+
+# Generate sketches ==============================================
+print("Generating sketches")
+pd = PySide.QtGui.QProgressDialog(u"Generating sketches", u"Abort", 0, steps)
+pd.setModal(True)
+
+# Generate a bounding box in construction geometry - this is required for the projection to surface
+bounding_width = outer_diameter * math.pi
+bounding_height = height_wo_base
+
+# optimisation: reduce number of sketches: use 2 sketches, with alternating generations
+sketches = []
+
+# create a base sketch for each
+for z in range(2):
+    # Create a new sketch and attach it to the XY plane
     # Note that a separate sketch is created for each generation to ensure that open cells do not form connected boundaries across generations
     # This is important for the Part Extrude operation to work correctly
     sketch = doc.addObject('Sketcher::SketchObject', f'Planter_Sketch_{z}')
@@ -129,6 +157,16 @@ for z in range(steps):
     sketch.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(0, bounding_height, 0)), True)  # Left
     sketch.addGeometry(Part.LineSegment(App.Vector(0, bounding_height, 0), App.Vector(bounding_width, bounding_height, 0)), True)  # Top
     sketch.addGeometry(Part.LineSegment(App.Vector(bounding_width, 0, 0), App.Vector(bounding_width, bounding_height, 0)), True)  # Right
+
+# loop through generations
+for z in range(steps):
+    sketch_index = z % 2
+    sketch = sketches[sketch_index]
+
+    print(f"Step {z} of {steps}")
+    print("".join([str(s) for s in state]))
+    next_state = []
+
 
     # loop through cells in a generation
     for s in range(cells):
@@ -169,10 +207,10 @@ for z in range(steps):
         raise Exception("Canceled by user")
 
 pd.setValue(steps)
-print("finished CA generation")
 gui_doc.activeView().fitAll()
 
 # Wrapping =============================================
+print("Wrapping")
 FreeCADGui.activateWorkbench("CurvesWorkbench")
 
 # progress dialog for wrapping stage
@@ -206,10 +244,11 @@ num_sos = len(sos_objects)
 print(f"Number of Sketch On Surface objects: {num_sos}")
 
 # Extrude the cells ==============================================
+print("Extruding cells")
 pd = PySide.QtGui.QProgressDialog(u"Extruding cells", u"Abort", 0, num_sos)
 pd.setModal(True)
 for i, sos in enumerate(sos_objects):
-    print(f"Extruding sketches {i} of {num_sos}")
+    print(f"Extruding sketch {i} of {num_sos}")
     # add thickness
     sos.Thickness = cell_thickness
     #add fill
