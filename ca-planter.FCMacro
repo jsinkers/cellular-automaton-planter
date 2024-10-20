@@ -17,7 +17,7 @@ timestamp = now.strftime("%Y%m%d_%H%M%S")  # Format: YYYYMMDD_HHMMSS
 # Parameters
 rng_seed = 0 # Seed for random number generator. allows repeatable output. Change to vary the result
 cells = 330  # Circumferential resolution (number of cells per row)
-height = 30 # Height of planter 
+height = 100 # Height of planter 
 outer_diameter = 120  # Outer radius of the planter
 wall_thickness = 1.2  # Thickness of the walls - ideally a multiple of the line width of your printer
 cell_thickness = 2.4  # Protrusion of the cells from the planter surface
@@ -27,7 +27,6 @@ base_depth = 5  # Depth of the base of the planter
 base_thickness = 3  # Thickness of the base
 base_fillet = 3  # Fillet radius of the base
 drain_hole_diameter = 30  # Diameter of the drain hole
-combine = False  # Combine all cells into a single shape (True) or keep them separate (False). Combining is much slower to generate, but the output has multiple parts
 step_file_path = f"A:\\Personal\\code-workspace\\cellular-automaton-planter\\ca-planter-{timestamp}-D{outer_diameter}H{height}-C{cells}-R{rule_number}-S{rng_seed}.step" # Specify the file path where you want to save the STEP file
 
 # Computed parameters
@@ -38,7 +37,7 @@ circumference = 2 * math.pi * outer_radius
 cell_size = circumference / cells  # Size of each CA cell (square cells, so this is width and height)
 
 height_wo_base = height - base_depth  # Adjust height to exclude the base
-steps = 3 #int(height_wo_base / cell_size)  # Adjust number of steps (height) based on cell size
+steps = int(height_wo_base / cell_size)  # Adjust number of steps (height) based on cell size
 
 print(f"Cell size: {cell_size}")
 print(f"Number of generations: {steps}")
@@ -284,3 +283,5 @@ for obj in parts_to_export:
 Part.export(FreeCADGui.Selection.getSelection(), step_file_path)
 
 print(f"Exported to {step_file_path}")
+end = datetime.now()
+print(f"Time taken: {end - now}")
