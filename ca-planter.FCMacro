@@ -6,6 +6,11 @@ import random
 import PySide
 from datetime import datetime
 
+# TODO: possible optimisations: 
+# TODO: possible off-by-one error in the number of generations - check the height calculation
+# TODO: check offset between extruded cells and surface - may need to add an offset to the sketch on surface
+# TODO: add more options for initial state (e.g., random, alternating, custom)
+
 # Get the current date and time
 now = datetime.now()
 timestamp = now.strftime("%Y%m%d_%H%M%S")  # Format: YYYYMMDD_HHMMSS
@@ -17,18 +22,18 @@ height = 100 # Height of planter
 outer_diameter = 120  # Outer radius of the planter
 wall_thickness = 1.2  # Thickness of the walls - ideally a multiple of the line width of your printer
 cell_thickness = 2.4  # Protrusion of the cells from the planter surface
-rule_number = 110  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably the most interesting
+rule_number = 30  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably good choices
+# suggested rules to try: 30, 45, 54, 60, 62, 73, 90, 94, 102, 105, 106, 110, 122, 126, 150, 158, 182
 overlap_thickness = 0.3  # Thickness of the overlap between the cells and the outer cylinder
 base_depth = 5  # Depth of the base of the planter
 base_thickness = 3  # Thickness of the base
 base_fillet = 3  # Fillet radius of the base
 drain_hole_diameter = 30  # Diameter of the drain hole
-combine = False  # Combine all cells into a single shape (True) or keep them separate (False). Combining is much slower to generate, but the output has multiple parts
 step_file_path = f"A:\\Personal\\code-workspace\\cellular-automaton-planter\\ca-planter-{timestamp}-D{outer_diameter}H{height}-C{cells}-R{rule_number}-S{rng_seed}.step" # Specify the file path where you want to save the STEP file
 
 # Computed parameters
 outer_radius = outer_diameter / 2  # Outer radius of the planter
-circumference = 2 * math.pi * (outer_radius + cell_thickness)
+circumference = 2 * math.pi * outer_radius
 
 # Calculate number of steps so that cells are close to square
 cell_size = circumference / cells  # Size of each CA cell (square cells, so this is width and height)
@@ -51,25 +56,28 @@ def apply_rule(a, b, c):
     return int(rule_bin[7 - index])
 
 # Generate initial state (random, alternating, or custom)
-random.seed(rng_seed)
 # alternating initial state
 #initial_state = [i % 2 for i in range(cells)]
 # random initial state
+random.seed(rng_seed)
 initial_state = [random.randint(0, 1) for i in range(cells)]
 
 # Create document
 doc = App.newDocument("CA_Planter_General")
+# Set view to isometric
+gui_doc = FreeCADGui.ActiveDocument
+gui_doc.activeView().viewIsometric()
 
 # show the origin
 origin = App.ActiveDocument.addObject("App::Origin", "Origin")
 origin.ViewObject.Visibility = True
 
 # Create basic cylinder of planter, including base
-
 modified_base_depth = height - steps * cell_size # Adjust base depth to give correct height
 print(f"Modified base depth: {modified_base_depth}")
-outer_cylinder = Part.makeCylinder(outer_radius + overlap_thickness, height)
+outer_cylinder = Part.makeCylinder(outer_radius, height)
 outer_cylinder.translate(App.Vector(0, 0, -modified_base_depth))
+
 # Select the lowest edge by checking Z coordinates
 edges = outer_cylinder.Edges
 lowest_edge = min(edges, key=lambda e: e.Vertexes[0].Point.z)  # Edge with lowest Z value
@@ -80,25 +88,86 @@ inner_cylinder = Part.makeCylinder(outer_radius - wall_thickness, height - base_
 inner_cylinder.translate(App.Vector(0, 0, -modified_base_depth + base_thickness))
 planter = outer_cylinder.cut(inner_cylinder)
 
-oversize = 0.1  # Oversize for the drain hole to ensure cut succeeds
 drain_hole = Part.makeCylinder(drain_hole_diameter / 2, base_thickness)
 drain_hole.translate(App.Vector(0, 0, -modified_base_depth))
 
 planter = planter.cut(drain_hole)
+planter_obj = doc.addObject("Part::Feature", "Planter")
+planter_obj.Shape = planter
 
-# Generate CA and extrude shapes for each active cell
+# Fit the view to the whole object
+gui_doc.activeView().fitAll()
+
+# Generate CA 
+print("Generating CA")
 state = initial_state
 
-# Add a progress dialog - this helps when generating large models
-pd = PySide.QtGui.QProgressDialog(u"Generating", u"Abort", 0, steps)
+# Add a progress dialog for long running operations
+pd = PySide.QtGui.QProgressDialog(u"Generating CA", u"Abort", 0, steps)
 pd.setModal(True)
 
 for z in range(steps):
-    
-    #print(f"Step {z}")
+    print(f"Step {z} of {steps}")
     print("".join([str(s) for s in state]))
-    cubes = []
     next_state = []
+
+    # loop through cells in a generation
+    for s in range(cells):
+        # Get the three neighboring cells
+        left = state[(s - 1) % cells]
+        center = state[s]
+        right = state[(s + 1) % cells]
+        
+        # Apply the rule to determine the next state
+        next_state.append(apply_rule(left, center, right))
+    
+    # Update state for the next generation
+    state = next_state
+    pd.setValue(z)
+    if pd.wasCanceled():
+        raise Exception("Canceled by user")
+
+pd.setValue(steps)
+
+# Generate sketches ==============================================
+print("Generating sketches")
+pd = PySide.QtGui.QProgressDialog(u"Generating sketches", u"Abort", 0, steps)
+pd.setModal(True)
+
+# Generate a bounding box in construction geometry - this is required for the projection to surface
+bounding_width = outer_diameter * math.pi
+bounding_height = height_wo_base
+
+# optimisation: reduce number of sketches: use 2 sketches, with alternating generations
+sketches = []
+
+# create a base sketch for each
+for z in range(2):
+    # Create a new sketch and attach it to the XY plane
+    # Note that a separate sketch is created for each generation to ensure that open cells do not form connected boundaries across generations
+    # This is important for the Part Extrude operation to work correctly
+    sketch = doc.addObject('Sketcher::SketchObject', f'Planter_Sketch_{z}')
+    sketches.append(sketch)
+    sketch.Support = [(doc.getObject('XZ_Plane'), '')]
+    sketch.Visibility = True  
+
+    # Add the bounding box as construction lines (vertical and horizontal) - used for sketch on surface
+    sketch.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(bounding_width, 0, 0)), True)  # Bottom
+    sketch.addGeometry(Part.LineSegment(App.Vector(0, 0, 0), App.Vector(0, bounding_height, 0)), True)  # Left
+    sketch.addGeometry(Part.LineSegment(App.Vector(0, bounding_height, 0), App.Vector(bounding_width, bounding_height, 0)), True)  # Top
+    sketch.addGeometry(Part.LineSegment(App.Vector(bounding_width, 0, 0), App.Vector(bounding_width, bounding_height, 0)), True)  # Right
+
+# loop through generations
+for z in range(steps):
+    sketch_index = z % 2
+    sketch = sketches[sketch_index]
+
+    print(f"Step {z} of {steps}")
+    print("".join([str(s) for s in state]))
+    next_state = []
+
+
+    # loop through cells in a generation
     for s in range(cells):
         # Get the three neighboring cells
         left = state[(s - 1) % cells]
@@ -108,31 +177,36 @@ for z in range(steps):
         # Apply the rule to determine the next state
         next_state.append(apply_rule(left, center, right))
         
-        # If current cell is active, add a cube at the appropriate position
-        if state[s] == 1:
-            angle = s * 2 * math.pi / cells
-            x_pos = (outer_radius + cell_size/2 - overlap_thickness) * math.cos(angle)
-            y_pos = (outer_radius + cell_size/2 - overlap_thickness) * math.sin(angle)
-            z_pos = z * cell_size  # Adjust z-position based on cell size
+        # Create a cell if the current state is active
+        if center == 1:
             # location to make cell
-            cell_origin = App.Vector(x_pos, y_pos, z_pos)
-            # Create cube (length, width, height)
-            cube = Part.makeBox(cell_thickness + overlap_thickness, cell_size, cell_size)
-            # Centre the cube before moving it
-            cube.translate(App.Vector(-cell_size/2, -cell_size/2, 0))
-            # Rotate the cube according to it's angle on the planter (rotation center, axis, rotation angle)
-            cube.rotate(App.Vector(0, 0, 0), App.Vector(0, 0, 1), math.degrees(angle))
-            # Move the cell to the correct height and edge of planter
-            cube.translate(cell_origin)
-            cubes.append(cube)
-    if combine:
-        # Add the cube to the planter
-        planter = planter.fuse(cubes)
-    else:
-        # Add the cube to the document
-        for cube in cubes:
-            Part.show(cube)
+            x_pos = s * cell_size
+            y_pos = z * cell_size
+            # Add cell to the sketch
+            # optimisation: reduce number of extrusions by combining cells into a single shape within the sketch
+            # - examine the state of the previous cell - if it is also active, then don't include the boundary between cells 
+            if left == 0 or s == 0:
+                sketch.addGeometry(Part.LineSegment(App.Vector(x_pos, y_pos, 0), App.Vector(x_pos, y_pos + cell_size, 0)))  # Left
+            # optimisation: reduce number of extrusions by combining cells into a single shape within the sketch
+            # - examine the state of the next cell - if it is also active, then don't include the boundary between cells 
+            if right == 0 or s == cells - 1:
+                sketch.addGeometry(Part.LineSegment(App.Vector(x_pos + cell_size, y_pos, 0), App.Vector(x_pos + cell_size, y_pos + cell_size, 0)))  # Right
+            
+            # - reduce number of extrusions: combine cells into a single shape within the sketch
+            #   - only draw the top and bottom lines if the cell is the last adjacent cell before an inactive cell, or if it is on the boundary
+            if left == 0 or s == 0:
+                min_x = x_pos
+            
+            if right == 0 or s == cells - 1:
+                sketch.addGeometry(Part.LineSegment(App.Vector(min_x, y_pos, 0), App.Vector((s+1) * cell_size, y_pos, 0)))  # Bottom
+                sketch.addGeometry(Part.LineSegment(App.Vector(min_x, y_pos + cell_size, 0), App.Vector((s+1) * cell_size, y_pos + cell_size, 0)))  # Top
+
     
+    # Now perform sketch to surface
+    # Make the support the face of the cylinder
+    print(planter_obj)
+    sketch.Support = (planter_obj, u'Face1')
+
     # Update state for the next generation
     state = next_state
     pd.setValue(z)
@@ -140,20 +214,64 @@ for z in range(steps):
         raise Exception("Canceled by user")
 
 pd.setValue(steps)
-print("finished")
-
-# Display the result 
-Part.show(planter)
-doc.recompute()
-
-# Set view to isometric
-gui_doc = FreeCADGui.ActiveDocument
-gui_doc.activeView().viewIsometric()
-
-
-# Fit the view to the whole object
 gui_doc.activeView().fitAll()
 
+# raise Exception("Debug - sketches generated")
+
+# Wrapping =============================================
+print("Wrapping")
+FreeCADGui.activateWorkbench("CurvesWorkbench")
+
+# progress dialog for wrapping stage
+pd = PySide.QtGui.QProgressDialog(u"Wrapping", u"Abort", 0, len(sketches))
+pd.setModal(True)
+
+# loop through sketches
+for i, sketch in enumerate(sketches):
+    print(i)
+    FreeCADGui.Selection.clearSelection()
+    # Select the sketch and surface
+    FreeCADGui.Selection.addSelection(sketch)
+    FreeCADGui.Selection.addSelection(planter_obj, 'Face1')
+
+    # Run Sketch On Surface (SoS command)
+    FreeCADGui.runCommand('SoS', 0)
+
+    sketch.Visibility = True # show the sketch
+
+    pd.setValue(i)
+    if pd.wasCanceled():
+        raise Exception("Canceled by user")
+
+pd.setValue(len(sketches))
+print("finished wrapping")
+
+# Get all objects in the document and find the last created Sketch On Surface object
+sos_objects = [obj for obj in doc.Objects if obj.Label.startswith("Sketch_On_Surface")]
+num_sos = len(sos_objects)
+print(f"Number of Sketch On Surface objects: {num_sos}")
+
+# Extrude the cells ==============================================
+print("Extruding cells")
+pd = PySide.QtGui.QProgressDialog(u"Extruding cells", u"Abort", 0, num_sos)
+pd.setModal(True)
+for i, sos in enumerate(sos_objects):
+    print(f"Extruding sketch {i} of {num_sos}")
+    # add thickness
+    sos.Thickness = cell_thickness
+    #add fill
+    sos.FillFaces = True
+    pd.setValue(i)
+    if pd.wasCanceled():
+        raise Exception("Canceled by user")
+
+pd.setValue(num_sos)
+print("finished extruding")
+
+# Display the result 
+doc.recompute()
+
+#raise Exception("Stopped here")
 # Select all shapes for export 
 parts_to_export = [obj for obj in doc.Objects if hasattr(obj, 'Shape')]
 
@@ -166,3 +284,5 @@ for obj in parts_to_export:
 Part.export(FreeCADGui.Selection.getSelection(), step_file_path)
 
 print(f"Exported to {step_file_path}")
+end = datetime.now()
+print(f"Time taken: {end - now}")
