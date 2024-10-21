@@ -16,14 +16,14 @@ For example, consider the following transition behaviours:
 
 ```
 input state -> output state
-000 -> 0
-001 -> 0
-010 -> 0
-011 -> 1
-100 -> 1
-101 -> 1
-110 -> 1 
 111 -> 0
+110 -> 0
+101 -> 0
+100 -> 1
+011 -> 1
+010 -> 1
+001 -> 1 
+000 -> 0
 ```
 
 This means you can encode the rules for each state as a binary string of length 8, e.g. `00011110`, which is 30 in base 10, so we consider this Rule 30.
