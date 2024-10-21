@@ -9,6 +9,7 @@ from datetime import datetime
 # TODO: possible optimisations: 
 # TODO: possible off-by-one error in the number of generations - check the height calculation
 # TODO: check offset between extruded cells and surface - may need to add an offset to the sketch on surface
+# TODO: add more options for initial state (e.g., random, alternating, custom)
 
 # Get the current date and time
 now = datetime.now()
@@ -21,7 +22,8 @@ height = 100 # Height of planter
 outer_diameter = 120  # Outer radius of the planter
 wall_thickness = 1.2  # Thickness of the walls - ideally a multiple of the line width of your printer
 cell_thickness = 2.4  # Protrusion of the cells from the planter surface
-rule_number = 30  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably the most interesting
+rule_number = 30  # Cellular Automaton rule (adjust this for different rules) - 0-255. 30 and 110 are probably good choices
+# suggested rules to try: 30, 45, 54, 60, 62, 73, 90, 94, 102, 105, 106, 110, 122, 126, 150, 158, 182
 overlap_thickness = 0.3  # Thickness of the overlap between the cells and the outer cylinder
 base_depth = 5  # Depth of the base of the planter
 base_thickness = 3  # Thickness of the base
@@ -223,7 +225,6 @@ FreeCADGui.activateWorkbench("CurvesWorkbench")
 # progress dialog for wrapping stage
 pd = PySide.QtGui.QProgressDialog(u"Wrapping", u"Abort", 0, len(sketches))
 pd.setModal(True)
-print(sketches)
 
 # loop through sketches
 for i, sketch in enumerate(sketches):
